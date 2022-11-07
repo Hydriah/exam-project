@@ -1,0 +1,5 @@
+
+[webserver]
+#ubuntu-slave1.dimmahydriah.me ansible_host=159.65.63.230  
+#ubuntu-slave2.dimmahydriah.me ansible_host=174.138.15.76  
+ubuntu-slavedimmahydriah.me ansible_host=164.92.193.103
