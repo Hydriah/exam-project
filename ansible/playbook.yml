@@ -1,14 +1,12 @@
 
-
-
 ---
- 
+
 -  name: deploying laravel application
    hosts: all
    become: yes
 
    tasks:
-    
+
 
 
     - name: set timezone to Africa/Lagos
@@ -19,20 +17,21 @@
 
     - name: set ntp sync to true
       command: timedatectl set-ntp true
+  
 
-    - name: Install Apache2 Server
+    - name: updating packages
       apt:
         name: apache2
         state: present
-           
- 
+        
+   
     
     - name: ufw allow port 80
       ufw:
           rule: allow
           port: '80'
           proto: tcp
-   
+
 
     - name: ufw allow port 443
       ufw:
@@ -41,12 +40,12 @@
           proto: tcp
 
 
-    - name: ufw allow port 22 
+
+    - name: ufw allow port 22
       ufw:
          rule: allow
-         port: '22'
-         proto: tcp
-   
+
+
     - name: Install git
       apt:
        name: git
@@ -72,79 +71,120 @@
       apt:
        name: curl
        state: present
-     
 
 
+    
 
+   
+    
     - name: Update installed packages
       ansible.builtin.apt:
             update_cache: yes
             autoremove: yes
             cache_valid_time: 3600
-  
+
 
 
     - name: Install lsb-release apt-transport-https ca-certificates
       apt: name={{ item }} state=latest
       loop: [ 'lsb-release', 'apt-transport-https', 'ca-certificates' ]
-   
+
 
 
     - name: delete a file if it exists
       file:
          path: /etc/apt/trusted.gpg.d/php.gpg
          state: absent
-   
+ 
+
     - name: Download PPA for PHP8.1
       get_url:
           url: https://packages.sury.org/php/apt.gpg
           dest: /etc/apt/trusted.gpg.d/php.gpg
-   
 
 
 
-    - name: Add the PPA to the server packages
-      shell: echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/php.list
 
-
-    
-    - name: install  php library
-      command: apt  install -y php8.0 libapache2-mod-php8.0 php8.0-common php8.0-mysql php8.0-xml php8.0-xmlrpc php8.0-curl php8.0-gd php8.0-imagick php8.0-cli php8.0-dev php8.0-imap php8.0-mbstring php8.0-soap php8.0-zip php8.0-intl 
-      become: yes
-
-
+                    
 
     - name: install  php prerequsites
       command: apt install software-properties-common
+
     
 
-   
-     
     - name: install  php library
-      command: apt  install -y php8.1-cli php8.1-soap  php8.1-common php8.1-mysql php8.1-zip php8.1-gd php8.1-mbstring php8.1-curl php8.1-xml php8.1-bcmath
+      shell: apt  install -y php8.1-cli php8.1-soap  php8.1-common php8.1-mysql php8.1-zip php8.1-gd php8.1-mbstring php libapache2-mod-php php8.1-xmlrpc php8.1-curl  php8.1-imagick php8.1-dev php8.1-imap php8.1-opcache 
       become: yes
 
+
+
+    - name: install python3,pip
+      shell: apt-get -y install "{{item}}"
+      with_items:
+          - pip
+          - python3-dev
+          - build-essential
+          - libapache2-mod-php
+
+
+ 
+    - name: Make sure pymysql is present
+      pip:
+        name: pymysql
+        state: present 
+   
+
+    - name: install mysql server
+      shell: apt-get -y install mysql-server
+
+  
+
+    - name: install mysql client
+      shell: apt-get -y install mysql-client
+
+
+
+
+    - name: start  mysql server
+      action: service name=mysql state=started
+
+
+
+    
+    - name: Create website directory
+      file:
+         path: "/var/www/myapp"
+         state: directory
+         owner:  root
+         mode: '0775'     
+
+
      
-
+    - name: clone laravel repository
+      git:
+          repo: https://github.com/f1amy/laravel-realworld-example-app.git
+          dest: -global --add safe.directory /var/www/myapp  
+          clone: yes
+          force: yes
     
+    - name: setup file modification permission
+      command: chmod -R 775 /var/www/myapp
 
-    
+
 
    
-#    - name: create mysql database
- #     mysql_db:
-  #         name: test-db
-   #        login_unix_socket: /var/run/mysqld/mysqld.sock
-    #       login_user: user
-     #      state: present 
+    - name: setup file ownership permission
+      command: chown -R www-data:www-data /var/www/myapp
+
+
+
    
-
-
-
-
-
-    - name: download composer installer
-      command: curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+    - name: enable the new config
+      shell: |
+          a2ensite myapp.conf
+          a2dissite 000-default.conf
+          a2enmod rewrite
+     
    
 
 
@@ -153,38 +193,13 @@
         url: https://getcomposer.org/installer
         dest: /tmp/composer-setup.php
 
+    - name: install composer
+      shell: php /tmp/composer-setup.php --install-dir=/usr/local/bin
 
-      
-
-
-#    - name: rename composer executable
- #     shell: cp /usr/local/bin/composer.phar /usr/local/bin/composer
-     
-
-
-    - name: Create website directory
-      file:
-         path: "/var/www/dimmahydriah.me"
-         state: directory
-         owner:  root
-         mode: '0775'
- 
-
-    - name: clone laravel repository
-      git:
-          repo: https://github.com/f1amy/laravel-realworld-example-app.git
-          dest: /var/www/myapp
-          clone: yes      
-          force: yes
-     
-  
    
-
-    - name: take ownership of myapp folder
-      file:
-        path: /var/www/myapp
-        owner: "{{ ansible_effective_user_id }}"
-        group: "{{ ansible_effective_group_id }}"
+    - name: make composer run globally
+      shell: cp /usr/local/bin/composer.phar /usr/local/bin/composer
+  
     
     - name: set permissions for Laravel storage folder
       file:
@@ -193,6 +208,7 @@
         recurse: yes
         mode: '775'
 
+
     - name: set permissions for Laravel bootstrap
       file:
         path: /var/www/myapp/bootstrap/cache
@@ -200,60 +216,53 @@
         recurse: yes
         mode: '775'
 
-    
+
 
     - name: install laravel dependencies
-      command: composer update --ignore-platform-reqs
+      command: composer create-project
       args:
          chdir: /var/www/myapp
       environment:
          COMPOSER_NO_INTERACTION: '1'
       become: no
- 
-
-#    - command: composer update --ignore-platform-reqs 
   
+
     - name: copy apache config
       copy:
           src: config/myapp.conf
           dest: /etc/apache2/sites-available/myapp.conf
-          owner:  "{{ ansible_effective_user_id }}"
-          group:  "{{ ansible_effective_user_id }}"
+          owner: www-data
+          group: www-data
           mode: '0644'
+
+
+
+
+
+   
+    - name: enable the new config
+      shell: |
+          a2ensite myapp.conf
+          a2dissite 000-default.conf
+          a2enmod rewrite
+         
 
 
     - name: copy env file
       copy:
          src: /var/www/myapp/.env.example
          remote_src: yes
-         dest: /var/www/myapp/.env
+         dest: /var/www/my-app/.env
          owner: www-data
          group: www-data
          mode: '0644'
-     
- 
-    - name: set server name
-      replace:
-           path: /etc/apache2/sites-available/myapp.conf
-           regexp: '$SERVER_NAME'
-           replace: www.dimmahydriah.me 
 
 
-    - name: enable the new config
-      shell: |
-          a2ensite myapp.conf
-          a2dissite 000-default.conf
-          a2enmod rewrite
-          service apache2 restart
 
 
-          
-   
     - name: setup laravel
       shell: |
           cd /var/www/myapp
           php artisan key:generate
+    
 
-
-
-  
